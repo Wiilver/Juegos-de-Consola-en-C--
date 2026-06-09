@@ -8,13 +8,19 @@ void iniciarArreglo(std::array<std::array<char, 3>, 3> &arreglo){
 }
 
 void impresion(std::array<std::array<char, 3>, 3> &arreglo){
+    std::string color;
     for(int i = 0; i < 3; i++){
-        for(int j = 0; j < 9; j++) std::cout<<"-";
+        for(int j = 0; j < 9; j++) std::cout<<(((j-1)%3==0) ? "-" : " ");
         std::cout<<'\n';
-        for(int j = 0; j < 3; j++) std::cout<<'|'<<arreglo[i][j]<<'|';
+        for(int j = 0; j < 3; j++){
+            if(arreglo[i][j]=='X') color = "\033[31m";
+            else if(arreglo[i][j]=='O') color = "\033[34m";
+            else color = "\033[0m";
+            std::cout<<'|'<<color<<arreglo[i][j]<<"\033[0m"<<'|';
+        }
         std::cout<<'\n';
     }
-    for(int j = 0; j < 9; j++) std::cout<<"-";
+    for(int j = 0; j < 9; j++) std::cout<<(((j-1)%3==0) ? "-" : " ");
     std::cout<<'\n';
 }
 
