@@ -1,106 +1,214 @@
 #include <iostream>
 #include <array>
+#include <exception>
+#include <cstdlib>
 
-void iniciarArreglo(std::array<std::array<char, 3>, 3> &arreglo){
-    for(int i = 0; i < 3; i++){
-        for(int j = 0; j < 3; j++) arreglo[i][j] = ' ';
+#ifdef _WIN32
+    #include <conio.h>
+    void iniciarTerminal(){}
+    void reiniciarTerminal(){}
+#else
+    #include <unistd.h>
+    #include <termios.h>
+    #include <sys/select.h>
+
+    struct termios terminalOriginal;
+
+    void iniciarTerminal(){
+        struct termios nuevaTermianl;
+
+        tcgetattr(STDIN_FILENO, &terminalOriginal);
+
+        nuevaTerminal = terminalOriginal;
+
+        modoJuego.c_lflag &= ~(ICANON | ECHO);
+
+        tcsetattr(STDIN_FILENO, TCSANOW, &modoJuego);
+    }
+
+    void reiniciarTerminal(){
+        tcsetattr(STDIN_FILENO, TCSANOW, &terminalOriginal);
+    }
+
+    int _kbhit() {
+        struct timeval tiempo = { 0L, 0L };
+        fd_set registros;
+        FD_ZERO(&registros);
+        FD_SET(0, &registros);
+        return select(1, &registros, NULL, NULL, &tiempo);
+    }
+
+    //La vez pasada esta funcion era un pedote
+    int _getch() {
+        return getchar();
+    }
+#endif
+
+struct coordenadas{
+    std::array<int,2> ant = {0,0};
+    std::array<int,2> nvo = {0,0};
+};
+
+struct buffer{
+    std::string lienzo = "";
+    coordenadas coordenadas;
+    const int dimensiones[2] = {7,11};
+};
+
+struct juego{
+    std::array<std::array<char, 3>,3> tablero;
+    coordenadas coordenadas;
+    const int dimensiones[2] = {3,3}; 
+};
+
+
+//En esta linea las coordenadas estan hardcodeadas
+void actualizarCoordenadas(juego juego, buffer &buffer){
+    buffer.coordenadas.ant = {juego.coordenadas.ant[0]*2+1, juego.coordenadas.ant[1]*4+1};
+    buffer.coordenadas.nvo = {juego.coordenadas.nvo[0]*2+1, juego.coordenadas.nvo[1]*4+1};
+}
+
+void iniciarBuffer(buffer &buffer){
+    for(int i = 0; i < buffer.dimensiones[0]; i++) buffer.lienzo += ((i%2==0) ? "-----------\n" : "| | | | | |\n");
+}
+
+void cambiarBuffer(buffer &buffer, char nvo, char ant){
+    buffer.lienzo[buffer.coordenadas.ant[0]*(buffer.dimensiones[1]+1)+buffer.coordenadas.ant[1]] = ant;
+    buffer.lienzo[buffer.coordenadas.nvo[0]*(buffer.dimensiones[1]+1)+buffer.coordenadas.nvo[1]] = nvo;
+}
+
+void manejarMovimiento(juego &juego, char car){
+    switch(car){
+        case 'W':
+        case 'w':
+            if(juego.coordenadas.nvo[0]>0) juego.coordenadas.nvo[0]--;
+            break;
+        case 'S':
+        case 's':
+            if(juego.coordenadas.nvo[0]<juego.dimensiones[0]-1) juego.coordenadas.nvo[0]++;
+            break;
+        case 'A':
+        case 'a':
+            if(juego.coordenadas.nvo[1]>0) juego.coordenadas.nvo[1]--;
+            break;
+        case 'D':
+        case 'd':
+            if(juego.coordenadas.nvo[1]<juego.dimensiones[1]-1) juego.coordenadas.nvo[1]++;
+            break;
     }
 }
 
-void impresion(std::array<std::array<char, 3>, 3> &arreglo){
-    std::string color;
-    for(int i = 0; i < 3; i++){
-        for(int j = 0; j < 9; j++) std::cout<<(((j-1)%3==0) ? "-" : " ");
-        std::cout<<'\n';
-        for(int j = 0; j < 3; j++){
-            if(arreglo[i][j]=='X') color = "\033[31m";
-            else if(arreglo[i][j]=='O') color = "\033[34m";
-            else color = "\033[0m";
-            std::cout<<'|'<<color<<arreglo[i][j]<<"\033[0m"<<'|';
-        }
-        std::cout<<'\n';
-    }
-    for(int j = 0; j < 9; j++) std::cout<<(((j-1)%3==0) ? "-" : " ");
-    std::cout<<'\n';
+void iniciarTablero(juego &juego){
+    for(int i = 0; i < juego.dimensiones[0]; i++) for(int j = 0; j < juego.dimensiones[1]; j++) juego.tablero[i][j] = ' ';
 }
 
-bool validarNumero(std::string respuesta){
-    if((isdigit(respuesta[0])) && (respuesta.length() == 1)){
-        return ((std::stoi(respuesta) < 10) && (std::stoi(respuesta) > 0));
-    }
+bool checarGanador(juego juego){
+    int y = juego.coordenadas.nvo[0];
+    int x = juego.coordenadas.nvo[1];
+
+    if((juego.tablero[y][0] == juego.tablero[y][1])&&(juego.tablero[y][1]==juego.tablero[y][2])&&(juego.tablero[y][0]!=' ')) return true;
+    if((juego.tablero[0][x] == juego.tablero[1][x])&&(juego.tablero[1][x]==juego.tablero[2][x])&&(juego.tablero[0][x]!=' ')) return true;
+
+    if(y==x) if((juego.tablero[0][0] == juego.tablero[1][1])&&(juego.tablero[1][1]==juego.tablero[2][2])&&(juego.tablero[0][0]!=' ')) return true;
+    if((y+x)==2) if((juego.tablero[0][2] == juego.tablero[1][1])&&(juego.tablero[1][1]==juego.tablero[2][0])&&(juego.tablero[0][2]!=' ')) return true;
     return false;
 }
 
-bool checarPares(std::array<int, 6> posiciones, std::array<std::array<char, 3>, 3> &tablero){
-    return(
-        (tablero[posiciones[0]][posiciones[1]] == tablero[posiciones[2]][posiciones[3]])&&
-        (tablero[posiciones[2]][posiciones[3]] == tablero[posiciones[4]][posiciones[5]])&&
-        (tablero[posiciones[0]][posiciones[1]] !=' ')
-    );
-}
+int mainLoop(){
+    //Creo que si quisiera implementar colores tendria que cambiar todo xd
+    const std::string BLANCO = "\033[0m";
+    const std::string ROJO   = "\033[31m";
+    const std::string AZUL   = "\033[34m";
 
-bool checarGanador(int fila, int columna, std::array<std::array<char, 3>, 3> &tablero){
-    if(fila==0)      if(checarPares({0,0,0,1,0,2}, tablero)) return true;
-    else if(fila==1) if(checarPares({1,0,1,1,1,2}, tablero)) return true;
-    else if(fila==2) if(checarPares({2,0,2,1,2,2}, tablero)) return true;
+    int turno = 1;
 
-    if(columna==0)      if(checarPares({0,0,1,0,2,0}, tablero)) return true;
-    else if(columna==1) if(checarPares({0,1,1,1,2,1}, tablero)) return true;
-    else if(columna==2) if(checarPares({0,2,1,2,2,2}, tablero)) return true;
+    bool turnoEquis = true;
+
+    char car, ant, nvo;
+
+    ant = ' ';
+    nvo = 'X';
+
+    buffer buffer;
+    juego juego;
+
+    juego.coordenadas.ant = {1,1};
+    juego.coordenadas.nvo = {1,1};
     
-    if(checarPares({0,0,1,1,2,2}, tablero)) return true;
-    return (checarPares({2,0,1,1,0,2}, tablero));
-}
+    iniciarTablero(juego);
+    iniciarBuffer(buffer);
+    
+    actualizarCoordenadas(juego, buffer);
+    cambiarBuffer(buffer, nvo, ant);
+    std::cout<<buffer.lienzo;
 
-int mainLoop(std::array<std::array<char, 3>, 3> &tablero){
-    std::string respuesta;
-    bool turnoEquis;
-    int  celda, turnos, fila, columna;
-
-    turnos = 1;
+//Pensar si usar metodos internos para evitar escribir tantas coas 
 
     while(true){
-        if(turnos == 10) return 3;
+        if(turno==10) return 3;
+        if(_kbhit()){
+            car = _getch();
+            if((car=='q')||(car=='Q')) break;
+            nvo = turnoEquis ? 'X' : 'O';
+            if(car==13){
+                if(juego.tablero[juego.coordenadas.nvo[0]][juego.coordenadas.nvo[1]]==' '){
+                    juego.tablero[juego.coordenadas.nvo[0]][juego.coordenadas.nvo[1]] = nvo;
+                    ant = nvo;
 
-        impresion(tablero);
-        
-        std::cout<<"Es el turno de las " << (turnoEquis ? 'X' : 'O') << '\n';
-        std::cout<<"En que casilla desea poner una " <<(turnoEquis ? 'X' : 'O') << "? : ";
-        std::cin>>respuesta;
-        
-        if(!validarNumero(respuesta)){
-            std::cout<<"Parece que hubo un error con tu respuesta, por favor, intentelo nuevamente\n";
-            continue;
-        }        
-        celda = std::stoi(respuesta);
-        
-        columna = celda%3 != 0 ? celda%3-1 : 2;
-        fila = (celda%3)==0 ? celda/3-1 : int(celda/3);
+                    juego.coordenadas.ant = juego.coordenadas.nvo;
+                    actualizarCoordenadas(juego, buffer);
+                    cambiarBuffer(buffer, nvo, ant);
+                    
+                    if(checarGanador(juego)){
+                        std::cout<<"\033[H";
+                        std::cout<<buffer.lienzo;
+                        return (turnoEquis ? 1 : 2);
+                    }
 
-        if(tablero[fila][columna]!=' '){
-            std::cout<<"Ya hay un simbolo ocupando esta celda, por favor, intentelo nuevamente\n";
-            continue;
+                    turnoEquis = !turnoEquis;
+                    turno++;
+                }
+            }
+            else{
+                juego.coordenadas.ant = juego.coordenadas.nvo;
+                manejarMovimiento(juego, car);
+                
+                ant = juego.tablero[juego.coordenadas.ant[0]][juego.coordenadas.ant[1]];
+                
+                actualizarCoordenadas(juego, buffer);
+                cambiarBuffer(buffer, nvo, ant);
+            }
+            std::cout<<"\033[H";
+            std::cout<<buffer.lienzo;
         }
-
-        tablero[fila][columna] = turnoEquis ? 'X' : 'O';
-        std::cout<<"\nAcabas de poner "<<tablero[fila][columna]<<'\n';
-
-        if(checarGanador(fila, columna, tablero)) return turnoEquis ? 1 : 2;
-        turnos++;
-        turnoEquis = !turnoEquis;
     }
+    return 0;
 }
 
 int main(){
-    std::array<std::array<char, 3>, 3> tablero;
+    system("cls");
     int resultado;
 
-    iniciarArreglo(tablero);
-    
-    resultado = mainLoop(tablero);
-    impresion(tablero);
-    
-    if((resultado == 1) || (resultado == 2)) std::cout<<"\nParece que en esta partida el ganador fueron las "<< (resultado==1 ? 'X' : 'O')<<"'s, bien jugado";
-    else std::cout<<"\nEsta partida estuvo dificil, pero no salio ningun vencedor";
+    std::atexit(reiniciarTerminal);
+    try{
+        iniciarTerminal();
+
+        resultado = mainLoop();
+
+        if((resultado == 1) || (resultado == 2)) 
+            std::cout<<"\nParece que en esta partida el ganador fueron las "<< (resultado==1 ? 'X' : 'O')<<"'s, bien jugado";
+        else std::cout<<"\nEsta partida estuvo dificil, pero no salio ningun vencedor";
+
+        reiniciarTerminal();
+    }
+    catch(std::exception error){
+        std::cout<<"\nParece que hubo un error inesperado"<<error.what()<<'\n';
+        reiniciarTerminal();
+    }
+    catch(...){
+        std::cout<<"\nNo se ni como lo lograste hermano\n";
+        reiniciarTerminal();
+    }
+
     return 0;
 }
