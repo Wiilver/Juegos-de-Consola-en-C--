@@ -209,19 +209,30 @@ int mainLoop(){
 }
 
 int main(){
-    system("cls");
     int resultado;
-
+    char car;
+    
     std::atexit(reiniciarTerminal);
     try{
         iniciarTerminal();
+        while(true){
+            system("cls");
 
-        resultado = mainLoop();
-
-        if((resultado == 1) || (resultado == 2)) 
+            resultado = mainLoop();
+            
+            if((resultado == 1) || (resultado == 2)) 
             std::cout<<"\nParece que en esta partida el ganador fueron las "<< (resultado==1 ? 'X' : 'O')<<"'s, bien jugado";
-        else std::cout<<"\nEsta partida estuvo dificil, pero no salio ningun vencedor";
-
+            else std::cout<<"\nEsta partida estuvo dificil, pero no salio ningun vencedor";
+            
+            while(true){
+                std::cout<<"\n\nDesea reiniciar el juego? (S/N) : ";
+                std::cin>>car;
+                car = toupper(car);
+                if((car=='N')||(car=='S')) break;
+                std::cout<<"\nParece que hubo un error con su respuesta, por favor, intentelo nuevamente";
+            }
+            if(car=='N')break;
+        }
         reiniciarTerminal();
     }
     catch(std::exception error){
