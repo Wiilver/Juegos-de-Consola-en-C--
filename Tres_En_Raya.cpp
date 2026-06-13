@@ -69,12 +69,36 @@ void actualizarCoordenadas(juego juego, buffer &buffer){
 }
 
 void iniciarBuffer(buffer &buffer){
-    for(int i = 0; i < buffer.dimensiones[0]; i++) buffer.lienzo += ((i%2==0) ? "-----------\n" : "| | | | | |\n");
+    for(int i = 0; i < buffer.dimensiones[0]; i++){
+        if(i%2==0) for(int j = 0; j < buffer.dimensiones[1]; j++) buffer.lienzo+="\033[97m-\033[0m";
+        else for(int j = 0; j < buffer.dimensiones[1]; j++) buffer.lienzo+= (j%2==0) ? "\033[97m|\033[0m" : "\033[97m \033[0m";
+        buffer.lienzo+='\n';
+    }
+}
+
+std::string devolverColoreado(char car){
+    switch(car){
+        case ' ':
+            return "\033[34m ";
+        case 'O':
+            return "\033[94mO";
+        case 'X':
+            return "\033[91mX";
+    }
+    return "\033[34m ";
 }
 
 void cambiarBuffer(buffer &buffer, char nvo, char ant){
-    buffer.lienzo[buffer.coordenadas.ant[0]*(buffer.dimensiones[1]+1)+buffer.coordenadas.ant[1]] = ant;
-    buffer.lienzo[buffer.coordenadas.nvo[0]*(buffer.dimensiones[1]+1)+buffer.coordenadas.nvo[1]] = nvo;
+    std::string cadena;
+
+    cadena = devolverColoreado(ant);
+    int inicio = buffer.coordenadas.ant[0]*buffer.dimensiones[1]*10+buffer.coordenadas.ant[1]*10+buffer.coordenadas.ant[0]+4;
+    for(int i = 0; i < 6; i++) buffer.lienzo[inicio+i] = cadena[i];
+
+    
+    cadena = devolverColoreado(nvo);
+    inicio = buffer.coordenadas.nvo[0]*buffer.dimensiones[1]*10+buffer.coordenadas.nvo[1]*10+buffer.coordenadas.nvo[0]+4;
+    for(int i = 0; i < 6; i++) buffer.lienzo[inicio+i] = cadena[i];
 }
 
 void manejarMovimiento(juego &juego, char car){
@@ -143,7 +167,6 @@ int mainLoop(){
     std::cout<<buffer.lienzo;
 
 //Pensar si usar metodos internos para evitar escribir tantas coas 
-
     while(true){
         if(turno==10) return 3;
         if(_kbhit()){
