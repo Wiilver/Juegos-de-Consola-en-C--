@@ -2,6 +2,7 @@
 #include <array>
 #include <exception>
 #include <cstdlib>
+#include <thread>
 
 #ifdef _WIN32
     #include <conio.h>
@@ -231,6 +232,7 @@ int main(){
                 std::cout<<"\nParece que hubo un error con su respuesta, por favor, intentelo nuevamente";
             }
             if(car=='N')break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
         reiniciarTerminal();
     }
