@@ -228,8 +228,7 @@ void crearMinas(std::vector<std::vector<char>> &minas, Coor dim, Coor coor){
         for(int j = 0; j < dim.x; j++){
             if(dim.y*dim.x > 15){
                 if((((i==coor.y+1)||(i==coor.y-1))&&(((j > coor.x-2)||(j < coor.x+2))))||
-                    ((i==coor.y)&&((j==coor.x-1)||(j==coor.x+1))))
-                
+                    ((i==coor.y)&&((j==coor.x-1)||(j==coor.x+1)))) continue;
             }
 
             rand.push_back({i,j});
