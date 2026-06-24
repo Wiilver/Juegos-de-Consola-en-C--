@@ -7,14 +7,24 @@
 
 #ifdef _WIN32
     #include <conio.h>
+    #include <windows.h>
+    void configurarConsola(){
+        SetConsoleOutputCP(CP_UTF8);
+        SetConsoleCP(CP_UTF8);
+    }
     void iniciarTerminal(){}
     void reiniciarTerminal(){}
 #else
+    #include <clocale>
     #include <unistd.h>
     #include <termios.h>
     #include <sys/select.h>
 
     struct termios terminalOriginal;
+
+    void configurarConsola(){
+        std::setlocale(LC_ALL, "");
+    }
 
     void iniciarTerminal(){
         struct termios nuevaTerminal;
@@ -41,7 +51,6 @@
         return select(1, &registros, NULL, NULL, &tiempo);
     }
 
-    //La vez pasada esta funcion era incluso mas rara
     int _getch() {
         char ch;
         read(0, &ch, 1);
@@ -61,20 +70,20 @@ struct Vel{
 };
 
 struct Caracteres{
-    std::string vertical   = " │ ";
-    std::string horizontal = "───";
-    std::string esquinaNE  = "─┐ ";
-    std::string esquinaNO  = " ┌─";
-    std::string esquinaSO  = " └─";
-    std::string esquinaSE  = "─┘ ";
-    std::string cruceC     = "─┼─";
-    std::string cruceS     = "─┴─";
-    std::string cruceE     = "─┤ ";
-    std::string cruceN     = "─┬─";
-    std::string cruceO     = " ├─";
-    std::string vacio      = "   ";
-    std::string personaje  = " # ";
-    std::string pelota     = " O ";
+    std::string vertical   = "│";
+    std::string horizontal = "─";
+    std::string esquinaNE  = "┐";
+    std::string esquinaNO  = "┌";
+    std::string esquinaSO  = "└";
+    std::string esquinaSE  = "┘";
+    std::string cruceC     = "┼";
+    std::string cruceS     = "┴";
+    std::string cruceE     = "┤";
+    std::string cruceN     = "┬";
+    std::string cruceO     = "├";
+    std::string vacio      = " ";
+    std::string personaje  = "#";
+    std::string pelota     = "O";
 };
 
 class Buffer{
@@ -112,7 +121,7 @@ class Buffer{
                     else if((i==dimensiones.y+1)&&(j==dimensiones.x+1)) cadena+=caracteres.esquinaSE;
                     else if((i==0)||(i==dimensiones.y+1)) cadena+=caracteres.horizontal;
                     else if((j==0)||(j==dimensiones.x+1)) cadena+=caracteres.vertical;
-                    else cadena+=*celdas[i][j];
+                    else cadena+=*celdas[i-1][j-1];
                 }
                 cadena+='\n';
             }
@@ -140,7 +149,6 @@ struct Juego{
     Coor pelota;
     Coor jugador;
     Coor maquina;
-
     Vel velocidad;
 
     int punJugador = 0;
@@ -148,8 +156,58 @@ struct Juego{
 
     double teta = 3*M_PI/4;
 
+    void choquePared(Coor &dim){
+        if(pelota.y<=0){
+            pelota.y = 0; 
+            velocidad.vY *= -1;
+        }
+        if(pelota.y>=dim.y-1){
+            pelota.y= dim.y-1; 
+            velocidad.vY *= -1;
+        } 
+        if(pelota.x<=0){
+            pelota.x = 0; 
+            velocidad.vX *= -1;
+        } 
+        if(pelota.x>=dim.x-1){
+            pelota.x = dim.x-1; 
+            velocidad.vX*=-1;
+        }
+    }
+
+    void cambiarPosPelota(Coor &dim){
+        if(velocidad.vY>0) if(pelota.y >= 0) pelota.y-=velocidad.vY;
+        if(velocidad.vY<0) if(pelota.y <= dim.y-1) pelota.y-=velocidad.vY;
+        if(velocidad.vX>0) if(pelota.x <= dim.x-1) pelota.x+=velocidad.vX;
+        if(velocidad.vX<0) if(pelota.x >= 0) pelota.x+=velocidad.vX;
+    
+        if((pelota.y<0)||(pelota.y>dim.y-1)||(pelota.x<0)||(pelota.x>dim.x-1)) choquePared(dim);
+    }
+
+    bool loop(Buffer &buffer){
+        const int tiempo = 100;
+
+        std::chrono::steady_clock::time_point inicio, actual;
+        std::chrono::duration<double, std::milli> lapso;
+        inicio = std::chrono::steady_clock::now();
+
+        while(true){
+            buffer.celdas[int(pelota.y)][int(pelota.x)] = &buffer.caracteres.vacio;
+            actual = std::chrono::steady_clock::now();
+            lapso = actual-inicio;
+            if(lapso.count()>tiempo){
+                inicio += std::chrono::milliseconds(tiempo);
+                cambiarPosPelota(buffer.dimensiones);
+            }
+            buffer.celdas[int(pelota.y)][int(pelota.x)] = &buffer.caracteres.pelota;
+            buffer.impresion();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    }
+
     void iniciarJuego(Buffer &buffer){
-        if((buffer.dimensiones.y<6)||(buffer.dimensiones.x<5)) throw "No puedes tener un pong con estas dimensiones";
+        std::cout << "\033[2J\033[3J\033[H" << std::flush;
+
         pelota.y = int(buffer.dimensiones.y/2);
         pelota.x = int(buffer.dimensiones.x/2);
 
@@ -157,7 +215,7 @@ struct Juego{
         jugador.x = 0;
 
         maquina.y = pelota.y;
-        maquina.x = buffer.dimensiones.y-1;
+        maquina.x = buffer.dimensiones.x-1;
 
         for(int i = 0; i < 5; i++){
             buffer.celdas[jugador.y-2+i][0] = &buffer.caracteres.personaje;
@@ -169,73 +227,40 @@ struct Juego{
         velocidad.vTotal = 1;
         velocidad.vY = sin(teta);
         velocidad.vX = cos(teta);
+
+        loop(buffer);
     }
 };
 
-int main(){
-    Buffer buffer(15, 20);
-
-    std::array<std::array<std::string, 20>,15> arr;
-    std::string buff;
-    std::array<double, 2> pelota = {8, 10};
-    std::array<double, 3> velocidad= {2, 0, 0};
-    double teta = M_PI/3;
-    
-    velocidad[1] = velocidad[0]*sin(teta);
-    velocidad[2] = velocidad[0]*cos(teta);
-
-    iniciarArray(arr);
-    buff = buffear(arr);
-
-    const int tiempo = 100;
-
-    std::chrono::steady_clock::time_point inicio, actual;
-    std::chrono::duration<double, std::milli> lapso;
-    inicio = std::chrono::steady_clock::now();
-
-    arr[pelota[0]][pelota[1]] = " O ";
-
+Buffer crearBuffer(){
+    int largo;
+    int alto;
     while(true){
-        arr[int(pelota[0])][int(pelota[1])] = "   ";
-        actual = std::chrono::steady_clock::now();
-        lapso = actual-inicio;
-        if(lapso.count()>tiempo){
-            inicio += std::chrono::milliseconds(tiempo);
-            if(velocidad[1]>0) if(pelota[0] >= 0) pelota[0]-=velocidad[1];
-            if(velocidad[1]<0) if(pelota[0] <= 14) pelota[0]-=velocidad[1];
-            if(velocidad[2]>0) if(pelota[1] <= 19) pelota[1]+=velocidad[2];
-            if(velocidad[2]<0) if(pelota[1] >= 0) pelota[1]+=velocidad[2];
-           
-            if((pelota[0]<0)||(pelota[0]>14)||(pelota[1]<0)||(pelota[1]>19)){
-                teta += M_PI/2;
-                if(pelota[0]<=0) {
-                    pelota[0] = 0; 
-                    velocidad[1] *= -1;
-                }
-                if(pelota[0]>=14){
-                    pelota[0] = 14; 
-                    velocidad[1] *= -1;
-                } 
-                if(pelota[1]<=0){
-                    pelota[1] = 0; 
-                    velocidad[2] *= -1;
-                } 
-                if(pelota[1]>=19){
-                    pelota[1] = 19; 
-                    velocidad[2]*=-1;
-                } 
-            }
+        try{
+            std::cout<<"Por favor, ingrese que tan largo quiere que sea el mapa, el minimo es 5 : ";
+            std::cin>>largo;
+            if(largo<6) throw;
 
+            std::cout<<"Por favor, ingrese que tan alto quiere que sea el mapa, el minio es 6 : ";
+            std::cin>>alto;
+            if(alto<7) throw;
+
+            return Buffer(alto, largo);
         }
-        arr[int(pelota[0])][int(pelota[1])] = " O ";
-        buff = buffear(arr);
-        std::cout<<"\033[2H";
-        std::cout<<buff;
-        std::cout<<velocidad[1]<<"|"<<velocidad[2]<<"\n";
-        std::cout<<pelota[0]<<"|"<<pelota[1]<<"\n";
-        std::cout<<teta;
+        catch(...){
+            std::cout<<"\nParece que hubo un error, por favor, intentelo de nuevo\n";
+        }
+    }
+}
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+int main(){
+    iniciarTerminal();
+    configurarConsola();
+    while(true){
+        Buffer buffer = crearBuffer();
+        Juego juego;
+        juego.iniciarJuego(buffer);
+
     }
 
     return 0;
