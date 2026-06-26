@@ -4,6 +4,7 @@
 #include <ctime>
 #include <thread>
 #include <cmath>
+#include <string>
 
 #ifdef _WIN32
     #include <conio.h>
@@ -58,6 +59,14 @@
     }
 #endif
 
+/*
+    Podriamos agregar:
+    - Un selector de dificultad
+    - La opcion de salir
+    - La parte de reiniciar
+    - Que el juego termine al llegar a 10
+*/
+
 struct Coor{
     double y;
     double x;
@@ -82,8 +91,8 @@ struct Caracteres{
     std::string cruceN     = "┬";
     std::string cruceO     = "├";
     std::string vacio      = " ";
-    std::string personaje  = "#";
-    std::string pelota     = "O";
+    std::string personaje  = "█";
+    std::string pelota     = "■";
 };
 
 class Buffer{
@@ -145,90 +154,236 @@ class Buffer{
         }
 };
 
+struct Personaje{
+    Coor posicion;
+    bool movimiento = false;
+    int puntuacion = 0;
+};
+
 struct Juego{
     Coor pelota;
-    Coor jugador;
-    Coor maquina;
+    Personaje jugador;
+    Personaje maquina;
     Vel velocidad;
-
-    int punJugador = 0;
-    int punMaquina = 0;
 
     double teta = 3*M_PI/4;
 
-    void choquePared(Coor &dim){
+    void colision(Coor &pj, Coor &pelo){
+        if(pelo.y==pj.y-2)teta = M_PI/3;
+        else if(pelo.y==pj.y-1)teta = M_PI/4;
+        else if(pelo.y==pj.y)teta = M_PI/6;
+        else if(pelo.y==pj.y+1)teta = 7*M_PI/4;
+        else teta = 5*M_PI/3;
+    }
+
+    void checarColision(){
+        Coor temp = pelota;
+        
+        temp.x = std::floor(temp.x);
+        temp.y = std::floor(temp.y);
+
+        if(temp.x==jugador.posicion.x){
+            if((temp.y>=jugador.posicion.y-2)&&(temp.y<=jugador.posicion.y+2)){
+                colision(jugador.posicion, temp);
+                cambiarVelocidades();
+                if(jugador.movimiento) velocidad.vY*=-1;
+            } 
+        }
+        temp.x = std::ceil(pelota.x);
+        temp.y = std::ceil(pelota.y);
+
+        if(temp.x==maquina.posicion.x){
+            if((temp.y>=maquina.posicion.y-2)&&(temp.y<=maquina.posicion.y+2)){
+                colision(maquina.posicion, temp);
+                cambiarVelocidades();
+                velocidad.vX*=-1;
+            }
+        }
+    }
+
+    void vaciarPersonajes(Buffer &buffer){
+        for(int i = 0; i < 5; i++){
+            buffer.celdas[jugador.posicion.y-2+i][jugador.posicion.x] = &buffer.caracteres.vacio;
+            buffer.celdas[maquina.posicion.y-2+i][maquina.posicion.x] = &buffer.caracteres.vacio;
+        }
+    }
+
+    void choquePared(Buffer &buffer){
         if(pelota.y<=0){
             pelota.y = 0; 
             velocidad.vY *= -1;
         }
-        if(pelota.y>=dim.y-1){
-            pelota.y= dim.y-1; 
+        if(pelota.y>=buffer.dimensiones.y-1){
+            pelota.y= buffer.dimensiones.y-1; 
             velocidad.vY *= -1;
         } 
         if(pelota.x<=0){
-            pelota.x = 0; 
-            velocidad.vX *= -1;
+            vaciarPersonajes(buffer);
+            iniciarJuego(buffer);
+            teta = ((jugador.puntuacion+maquina.puntuacion)%2==0 ? M_PI/4 : 7*M_PI/4);
+            cambiarVelocidades();
+            maquina.puntuacion+=1;
         } 
-        if(pelota.x>=dim.x-1){
-            pelota.x = dim.x-1; 
-            velocidad.vX*=-1;
+        if(pelota.x>=buffer.dimensiones.x-1){
+            vaciarPersonajes(buffer);
+            iniciarJuego(buffer);
+            teta = ((jugador.puntuacion+maquina.puntuacion)%2==0 ? 3*M_PI/4 : 5*M_PI/4);
+            cambiarVelocidades();
+            jugador.puntuacion+=1;
         }
     }
 
-    void cambiarPosPelota(Coor &dim){
+    void cambiarPosPelota(Buffer &buffer){
         if(velocidad.vY>0) if(pelota.y >= 0) pelota.y-=velocidad.vY;
-        if(velocidad.vY<0) if(pelota.y <= dim.y-1) pelota.y-=velocidad.vY;
-        if(velocidad.vX>0) if(pelota.x <= dim.x-1) pelota.x+=velocidad.vX;
+        if(velocidad.vY<0) if(pelota.y <= buffer.dimensiones.y-1) pelota.y-=velocidad.vY;
+        if(velocidad.vX>0) if(pelota.x <= buffer.dimensiones.x-1) pelota.x+=velocidad.vX;
         if(velocidad.vX<0) if(pelota.x >= 0) pelota.x+=velocidad.vX;
     
-        if((pelota.y<0)||(pelota.y>dim.y-1)||(pelota.x<0)||(pelota.x>dim.x-1)) choquePared(dim);
+        if((pelota.y<0)||(pelota.y>buffer.dimensiones.y-1)||(pelota.x<0)||(pelota.x>buffer.dimensiones.x-1)) choquePared(buffer);
+    }
+
+    void conseguirTecla(char &car){
+        switch(car){
+            case 'W':
+            case 'w':
+                car = 'W';
+                break;
+            case 'S':
+            case 's':
+                car = 'S';
+                break;
+            default:
+                car = ' ';
+                break;
+        }
+    }
+
+    void checarTecla(char &tecla){
+        if(_kbhit()){
+            tecla = _getch();
+            conseguirTecla(tecla);
+        }
+    }
+
+    void cambiarPosicion(char &dir, Buffer &buffer, Personaje &pj){
+        if((dir=='W')&&(pj.posicion.y > 2)){
+            buffer.celdas[pj.posicion.y+2][pj.posicion.x] = &buffer.caracteres.vacio;
+            pj.posicion.y--;
+            buffer.celdas[pj.posicion.y-2][pj.posicion.x] = &buffer.caracteres.personaje;
+        }
+        else if((dir=='S')&&(pj.posicion.y < buffer.dimensiones.y-3)){
+            buffer.celdas[pj.posicion.y-2][pj.posicion.x] = &buffer.caracteres.vacio;
+            pj.posicion.y++;
+            buffer.celdas[pj.posicion.y+2][pj.posicion.x] = &buffer.caracteres.personaje;
+        }
+        dir = ' ';
+        pj.movimiento = true;
+    }
+
+    void imprimirPuntuaciones(int jug, int npc, int dimX){
+        std::string cadena = "";
+
+        if(dimX%3==1)      dimX+=2;
+        else if(dimX%3==2) dimX+=1;
+
+        if((dimX/3) == 1) dimX*=3;
+        else if((dimX/3) == 2) dimX*=1.5;
+
+        for(int i = 0; i < dimX+2; i++) cadena+='-';
+        cadena+='\n';
+        for(int i = 0; i < dimX+2; i++){
+            if(i==(dimX/3)-1) {cadena+="JUG"; i+=2;}
+            else if(i==(dimX/3)*2) {cadena+="NPC"; i+=2;}
+            else cadena+=' ';
+        }
+        cadena+='\n';
+        for(int i = 0; i < dimX+2; i++){
+            if(i==(dimX/3)) cadena+=std::to_string(jug);
+            else if(i==(dimX/3)*2+1) cadena+=std::to_string(npc);
+            else cadena+=' ';
+        }
+        cadena+='\n';
+        for(int i = 0; i < dimX+2; i++) cadena+='-';
+        std::cout<<cadena;
+    }
+
+    void rellenarPersonajes(Buffer &buffer, std::string &str){
+        std::string* puntero = &str;
+        for(int i = 0; i < 5; i++){
+            buffer.celdas[jugador.posicion.y-2+i][0] = puntero;
+            buffer.celdas[maquina.posicion.y-2+i][maquina.posicion.x] = puntero;
+        }
+    }
+
+    void cambiarPosMaquina(Buffer &buffer){
+        if((maquina.posicion.y < pelota.y)&&(maquina.posicion.y<buffer.dimensiones.y-2.5)) maquina.posicion.y+=.4;
+        else if((maquina.posicion.y > pelota.y)&&(maquina.posicion.y>2.5)) maquina.posicion.y-=.4;
     }
 
     bool loop(Buffer &buffer){
-        const int tiempo = 100;
+        iniciarJuego(buffer);
+        
+        char tecla = ' ';
+        const int tiempo = 60;
 
         std::chrono::steady_clock::time_point inicio, actual;
         std::chrono::duration<double, std::milli> lapso;
         inicio = std::chrono::steady_clock::now();
 
         while(true){
-            buffer.celdas[int(pelota.y)][int(pelota.x)] = &buffer.caracteres.vacio;
+            checarTecla(tecla);
+            if(tecla!=' ') cambiarPosicion(tecla, buffer, jugador);
+
             actual = std::chrono::steady_clock::now();
             lapso = actual-inicio;
             if(lapso.count()>tiempo){
                 inicio += std::chrono::milliseconds(tiempo);
-                cambiarPosPelota(buffer.dimensiones);
+                
+                rellenarPersonajes(buffer, buffer.caracteres.vacio);
+                cambiarPosMaquina(buffer);
+                
+                buffer.celdas[int(pelota.y)][int(pelota.x)] = &buffer.caracteres.vacio;
+                cambiarPosPelota(buffer);
+                checarColision();
+                buffer.celdas[int(pelota.y)][int(pelota.x)] = &buffer.caracteres.pelota;
+                
+                rellenarPersonajes(buffer, buffer.caracteres.personaje);
+                
+                buffer.impresion();
+                imprimirPuntuaciones(jugador.puntuacion, maquina.puntuacion, buffer.dimensiones.x);
+                jugador.movimiento = false;
             }
-            buffer.celdas[int(pelota.y)][int(pelota.x)] = &buffer.caracteres.pelota;
-            buffer.impresion();
+            
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
     }
 
+
+    void cambiarVelocidades(){
+        velocidad.vY = sin(teta);
+        velocidad.vX = cos(teta);
+    }
     void iniciarJuego(Buffer &buffer){
         std::cout << "\033[2J\033[3J\033[H" << std::flush;
 
         pelota.y = int(buffer.dimensiones.y/2);
         pelota.x = int(buffer.dimensiones.x/2);
 
-        jugador.y = pelota.y;
-        jugador.x = 0;
+        jugador.posicion.y = pelota.y;
+        jugador.posicion.x = 0;
 
-        maquina.y = pelota.y;
-        maquina.x = buffer.dimensiones.x-1;
+        maquina.posicion.y = pelota.y;
+        maquina.posicion.x = buffer.dimensiones.x-1;
 
         for(int i = 0; i < 5; i++){
-            buffer.celdas[jugador.y-2+i][0] = &buffer.caracteres.personaje;
-            buffer.celdas[maquina.y-2+i][maquina.x] = &buffer.caracteres.personaje;
+            buffer.celdas[jugador.posicion.y-2+i][0] = &buffer.caracteres.personaje;
+            buffer.celdas[maquina.posicion.y-2+i][maquina.posicion.x] = &buffer.caracteres.personaje;
         }
 
         buffer.celdas[pelota.y][pelota.x] = &buffer.caracteres.pelota;
 
         velocidad.vTotal = 1;
-        velocidad.vY = sin(teta);
-        velocidad.vX = cos(teta);
-
-        loop(buffer);
+        cambiarVelocidades();
     }
 };
 
@@ -259,7 +414,7 @@ int main(){
     while(true){
         Buffer buffer = crearBuffer();
         Juego juego;
-        juego.iniciarJuego(buffer);
+        juego.loop(buffer);
 
     }
 
